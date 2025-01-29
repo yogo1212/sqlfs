@@ -49,5 +49,9 @@ func (e QueryHandleError) ReadAll(ctx context.Context) ([]byte, error) {
 	s.m.Lock()
 	defer s.m.Unlock()
 
-	return s.err.Bytes(), nil
+	buf := make([]byte, s.err.Len() + 1)
+	buf = append(buf, s.err.Bytes()...)
+	buf = append(buf, '\n')
+
+	return buf, nil
 }
