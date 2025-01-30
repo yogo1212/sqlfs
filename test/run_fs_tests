@@ -1,0 +1,51 @@
+#!/bin/sh -e
+
+set -o pipefail
+
+query() (
+	dir="$(mktemp -d -p queries/handles/)"
+	cd "$dir"
+	dir="../$(basename "$dir")"
+
+	f="$1"
+	shift
+
+	echo "$1" > ./exec
+	shift
+
+	for p in "$@"; do
+		echo "$p" > params
+	done
+
+	if (! rm params 2>/dev/null) || [ -f error ]; then
+		cat error >&2
+		rmdir "$dir"
+		return 1
+	fi
+
+	cat "$f"
+
+	if [ -f error ]; then
+		cat error >&2
+		rmdir "$dir"
+		return 1
+	fi
+
+	rmdir "$dir"
+)
+
+query read_all_as_ascii 'select true; select 14, false;' | hexdump -C
+
+query read_all_as_ascii "select \$1, 'test param'" 12 | hexdump -C
+
+! query read_all_as_ascii 'create expected_to_fail'
+
+query read_all_as_ascii 'drop table if exists test_table'
+
+query read_all_as_ascii 'create table test_table (
+	id serial primary key,
+	name varchar(12) not null unique
+);'
+
+query read_all_as_ascii 'insert into test_table (name) values ($1)' 'some entry'
+query read_all_as_ascii 'select id, name from test_table'

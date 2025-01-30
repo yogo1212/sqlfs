@@ -1,0 +1,50 @@
+#!/bin/bash -e
+
+cd "$(readlink -f "$(dirname "$BASH_SOURCE")")"
+
+create_fifo() {
+	local fd f="$(mktemp -u)"
+	mkfifo "$f"
+	exec {pg_stdout_fd}<>"$f"
+	rm "$f"
+	echo -n "$fd"
+}
+
+mkdir -p db_data
+
+db_port=5413
+
+create_fifo
+
+podman run --rm --userns keep-id "--hostuser=$USER" \
+	-e=POSTGRES_USER=admin \
+	-e=POSTGRES_PASSWORD=password \
+	-e=POSTGRES_DB=testdb \
+	-v "./db_data:/var/lib/postgresql/data" \
+	-p "127.0.0.1:$db_port:5432" \
+	docker.io/library/postgres:17-alpine 1>&${pg_stdout_fd} 2>&1 &
+
+echo "waiting for database to be ready.."
+timeout 20 sed '/database system is ready to accept connections/ q' <&${pg_stdout_fd}
+cat <&${pg_stdout_fd} &
+
+mkdir -p mnt
+
+go run .. "$@" "postgres://admin:password@127.0.0.1:$db_port/testdb?sslmode=disable" mnt &
+
+echo "waiting for mount to be ready.."
+while ! mountpoint -q mnt; do
+	sleep 2
+done
+
+cd mnt
+echo "running tests"
+../run_fs_tests
+
+cd ..
+echo "cleaning up"
+
+umount mnt
+wait -n
+
+kill %1
