@@ -1,4 +1,4 @@
-module github.com/yogo1212/sqlfs
+module github.com/yogo1212/sqlfs.git/go
 
 go 1.23.4
 

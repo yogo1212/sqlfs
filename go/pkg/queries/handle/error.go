@@ -1,10 +1,12 @@
-package main
+package handle
 
 import (
 	"context"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
+
+	"github.com/yogo1212/sqlfs.git/go/pkg/base"
 )
 
 type queryHandleErrorInfo struct{
@@ -14,10 +16,13 @@ type queryHandleErrorInfo struct{
 }
 
 type QueryHandleError struct{
+	data *base.MountData
+
 	i *queryHandleErrorInfo
 }
 
-func NewQueryHandleError(parentInode uint64, s *queryHandleStateData) (e QueryHandleError) {
+func NewQueryHandleError(data *base.MountData, parentInode uint64, s *queryHandleStateData) (e QueryHandleError) {
+	e.data = data
 	e.i = &queryHandleErrorInfo{
 		inode: fs.GenerateDynamicInode(parentInode, "error"),
 		s: s,
@@ -29,8 +34,8 @@ func (e QueryHandleError) Attr(ctx context.Context, a *fuse.Attr) error {
 	s := e.i.s
 
 	a.Inode = e.i.inode
-	a.Uid = uid
-	a.Gid = gid
+	a.Uid = e.data.Uid
+	a.Gid = e.data.Gid
 	a.Mode = 0o444
 	a.Size = uint64(s.err.Len())
 	return nil

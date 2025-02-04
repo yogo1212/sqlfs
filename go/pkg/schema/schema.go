@@ -1,4 +1,4 @@
-package main
+package schema
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
+
+	"github.com/yogo1212/sqlfs.git/go/pkg/base"
 )
 
 type schemaInfo struct {
@@ -17,12 +19,14 @@ type schemaInfo struct {
 }
 
 type Schema struct{
+	data *base.MountData
 	i *schemaInfo
 }
 
-func NewSchema(name string) (s Schema, err error) {
+func NewSchema(data *base.MountData, parentInode uint64, name string) (s Schema, err error) {
+	s.data = data
 	s.i = &schemaInfo{
-		inode: fs.GenerateDynamicInode(InodeSchemas, name),
+		inode: fs.GenerateDynamicInode(parentInode, name),
 		name: name,
 	}
 
@@ -31,8 +35,8 @@ func NewSchema(name string) (s Schema, err error) {
 
 func (s Schema) Attr(ctx context.Context, a *fuse.Attr) error {
 	a.Inode = s.i.inode
-	a.Uid = uid
-	a.Gid = gid
+	a.Uid = s.data.Uid
+	a.Gid = s.data.Gid
 	a.Mode = os.ModeDir | 0o555
 	return nil
 }
@@ -44,8 +48,9 @@ func (s Schema) Lookup(ctx context.Context, name string) (fs.Node, error) {
 			return s.i.tables, nil
 		}
 
-		t, err := prTE(NewTables(s))
+		t, err := NewTables(s.data, s)
 		if err == nil {
+			s.data.PrintErr(err)
 			s.i.tables = &t
 		}
 

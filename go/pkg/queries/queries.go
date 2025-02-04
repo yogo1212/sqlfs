@@ -1,4 +1,4 @@
-package main
+package queries
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
+
+	"github.com/yogo1212/sqlfs.git/go/pkg/base"
 )
 
 type queriesInfo struct {
@@ -15,17 +17,22 @@ type queriesInfo struct {
 
 type Queries struct{
 	i *queriesInfo
+	data *base.MountData
+
+	inode uint64
 }
 
-func NewQueries() (q Queries) {
+func NewQueries(data *base.MountData, parentInode uint64) (q Queries) {
+	q.data = data
 	q.i = &queriesInfo{}
+	q.inode = fs.GenerateDynamicInode(parentInode, "queries")
 	return
 }
 
-func (Queries) Attr(ctx context.Context, a *fuse.Attr) error {
-	a.Inode = InodeQueries
-	a.Uid = uid
-	a.Gid = gid
+func (q Queries) Attr(ctx context.Context, a *fuse.Attr) error {
+	a.Inode = q.inode
+	a.Uid = q.data.Uid
+	a.Gid = q.data.Gid
 	a.Mode = os.ModeDir | 0o555
 	return nil
 }
@@ -34,7 +41,7 @@ func (q Queries) Lookup(ctx context.Context, name string) (fs.Node, error) {
 	switch name {
 	case "handles":
 		if q.i.queryHandles == nil {
-			s := NewQueryHandles(InodeQueries)
+			s := NewQueryHandles(q.data, q.inode)
 			q.i.queryHandles = &s
 			return s, nil
 		}
@@ -48,7 +55,7 @@ func (q Queries) Lookup(ctx context.Context, name string) (fs.Node, error) {
 
 func (q Queries) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	entries := []fuse.Dirent{
-		{Inode: fs.GenerateDynamicInode(InodeQueries, "handles"), Name: "handles", Type: fuse.DT_Dir},
+		{Inode: fs.GenerateDynamicInode(q.inode, "handles"), Name: "handles", Type: fuse.DT_Dir},
 		// {Inode: fs.GenerateDynamicInode(q.i.inode, "single"), Name: "single", Type: fuse.DT_File},
 		// {Inode: fs.GenerateDynamicInode(q.i.inode, "handles"), Name: "handles", Type: fuse.DT_Dir},
 		// {Inode: fs.GenerateDynamicInode(q.i.inode, "results"), Name: "results", Type: fuse.DT_File},

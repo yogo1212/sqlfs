@@ -1,4 +1,4 @@
-package main
+package handle
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
+
+	"github.com/yogo1212/sqlfs.git/go/pkg/base"
 )
 
 type queryHandleExecInfo struct{
@@ -15,10 +17,12 @@ type queryHandleExecInfo struct{
 }
 
 type QueryHandleExec struct{
+	data *base.MountData
 	i *queryHandleExecInfo
 }
 
-func NewQueryHandleExec(parentInode uint64, s *queryHandleStateData) (h QueryHandleExec) {
+func NewQueryHandleExec(data *base.MountData, parentInode uint64, s *queryHandleStateData) (h QueryHandleExec) {
+	h.data = data
 	h.i = &queryHandleExecInfo{
 		inode: fs.GenerateDynamicInode(parentInode, "exec"),
 		s: s,
@@ -28,8 +32,8 @@ func NewQueryHandleExec(parentInode uint64, s *queryHandleStateData) (h QueryHan
 
 func (e QueryHandleExec) Attr(ctx context.Context, a *fuse.Attr) error {
 	a.Inode = e.i.inode
-	a.Uid = uid
-	a.Gid = gid
+	a.Uid = e.data.Uid
+	a.Gid = e.data.Gid
 	a.Mode = 0o222
 	return nil
 }

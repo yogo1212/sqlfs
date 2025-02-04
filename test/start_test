@@ -30,7 +30,7 @@ cat <&${pg_stdout_fd} &
 
 mkdir -p mnt
 
-go run .. "$@" "postgres://admin:password@127.0.0.1:$db_port/testdb?sslmode=disable" mnt &
+go run .. "$@" "postgres://admin:password@127.0.0.1:$db_port/testdb?sslmode=disable" ../test/mnt &
 
 echo "waiting for mount to be ready.."
 while ! mountpoint -q mnt; do

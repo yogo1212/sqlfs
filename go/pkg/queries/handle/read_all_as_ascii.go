@@ -1,4 +1,4 @@
-package main
+package handle
 
 import (
 	"bytes"
@@ -7,6 +7,8 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
+
+	"github.com/yogo1212/sqlfs.git/go/pkg/base"
 )
 
 type queryHandleReadAllAsAsciiInfo struct{
@@ -16,10 +18,13 @@ type queryHandleReadAllAsAsciiInfo struct{
 }
 
 type QueryHandleReadAllAsAscii struct{
+	data *base.MountData
+
 	i *queryHandleReadAllAsAsciiInfo
 }
 
-func NewQueryHandleReadAllAsAscii(parentInode uint64, s *queryHandleStateData) (r QueryHandleReadAllAsAscii) {
+func NewQueryHandleReadAllAsAscii(data *base.MountData, parentInode uint64, s *queryHandleStateData) (r QueryHandleReadAllAsAscii) {
+	r.data = data
 	r.i = &queryHandleReadAllAsAsciiInfo{
 		inode: fs.GenerateDynamicInode(parentInode, "read_all_as_ascii"),
 		s: s,
@@ -29,8 +34,8 @@ func NewQueryHandleReadAllAsAscii(parentInode uint64, s *queryHandleStateData) (
 
 func (r QueryHandleReadAllAsAscii) Attr(ctx context.Context, a *fuse.Attr) error {
 	a.Inode = r.i.inode
-	a.Uid = uid
-	a.Gid = gid
+	a.Uid = r.data.Uid
+	a.Gid = r.data.Gid
 	a.Mode = 0o444
 	return nil
 }
@@ -61,8 +66,9 @@ func (r QueryHandleReadAllAsAscii) ReadAll(ctx context.Context) ([]byte, error) 
 	var res bytes.Buffer
 
 	appendRows := func () error {
-		c, err := prTE(s.rows.Columns())
+		c, err := s.rows.Columns()
 		if err != nil {
+			r.data.PrintErr(err)
 			return syscall.EIO
 		}
 
@@ -83,8 +89,9 @@ func (r QueryHandleReadAllAsAscii) ReadAll(ctx context.Context) ([]byte, error) 
 				res.WriteByte(0x1e)
 			}
 
-			err = prE(s.rows.Scan(row...))
+			err = s.rows.Scan(row...)
 			if err != nil {
+				r.data.PrintErr(err)
 				return syscall.EIO
 			}
 

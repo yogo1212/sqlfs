@@ -1,4 +1,4 @@
-package main
+package handle
 
 import (
 	"bytes"
@@ -10,6 +10,8 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
+
+	"github.com/yogo1212/sqlfs.git/go/pkg/base"
 )
 
 type queryHandleState uint
@@ -49,17 +51,20 @@ type queryHandleInfo struct {
 }
 
 type QueryHandle struct{
+	data *base.MountData
+
 	i *queryHandleInfo
 }
 
-func NewQueryHandle(parentInode uint64, name string) (q QueryHandle) {
+func NewQueryHandle(data *base.MountData, parentInode uint64, name string) (q QueryHandle) {
+	q.data = data
 	q.i = &queryHandleInfo{
 		inode: fs.GenerateDynamicInode(parentInode, name),
 		s: queryHandleStateData{
 			notifyStateChange: func () {
-				err := fuseServer.InvalidateNodeData(q)
+				err := data.FuseServer.InvalidateNodeData(q)
 				if err != nil && err != fuse.ErrNotCached {
-					prE(err)
+					data.PrintErr(err)
 				}
 			},
 			notifyError: func (e error) {
@@ -67,9 +72,9 @@ func NewQueryHandle(parentInode uint64, name string) (q QueryHandle) {
 				q.i.s.err.WriteString(e.Error())
 
 				go func() {
-					err := fuseServer.InvalidateEntry(q, "error")
+					err := data.FuseServer.InvalidateEntry(q, "error")
 					if err != nil && err != fuse.ErrNotCached {
-						prE(err)
+						data.PrintErr(err)
 					}
 				}()
 
@@ -77,9 +82,9 @@ func NewQueryHandle(parentInode uint64, name string) (q QueryHandle) {
 			},
 			notifyRowsChange: func () {
 				go func() {
-					err := fuseServer.InvalidateEntry(q, "read_all_as_ascii")
+					err := data.FuseServer.InvalidateEntry(q, "read_all_as_ascii")
 					if err != nil && err != fuse.ErrNotCached {
-						prE(err)
+						data.PrintErr(err)
 					}
 				}()
 
@@ -90,7 +95,7 @@ func NewQueryHandle(parentInode uint64, name string) (q QueryHandle) {
 	return
 }
 
-func (q QueryHandle) cleanup() {
+func (q QueryHandle) Cleanup() {
 	s := q.i.s
 	s.m.Lock()
 	defer s.m.Unlock()
@@ -103,8 +108,8 @@ func (q QueryHandle) cleanup() {
 
 func (h QueryHandle) Attr(ctx context.Context, a *fuse.Attr) error {
 	a.Inode = h.i.inode
-	a.Uid = uid
-	a.Gid = gid
+	a.Uid = h.data.Uid
+	a.Gid = h.data.Gid
 	a.Mode = os.ModeDir | 0o555
 	return nil
 }
@@ -124,7 +129,7 @@ func (q QueryHandle) Lookup(ctx context.Context, name string) (fs.Node, error) {
 				return *q.i.err, nil
 			}
 
-			n := NewQueryHandleError(q.i.inode, &q.i.s)
+			n := NewQueryHandleError(q.data, q.i.inode, &q.i.s)
 			q.i.err = &n
 
 			return n, nil
@@ -139,7 +144,7 @@ func (q QueryHandle) Lookup(ctx context.Context, name string) (fs.Node, error) {
 				return *q.i.exec, nil
 			}
 
-			n := NewQueryHandleExec(q.i.inode, &q.i.s)
+			n := NewQueryHandleExec(q.data, q.i.inode, &q.i.s)
 			q.i.exec = &n
 
 			return n, nil
@@ -153,7 +158,7 @@ func (q QueryHandle) Lookup(ctx context.Context, name string) (fs.Node, error) {
 				return *q.i.params, nil
 			}
 
-			n := NewQueryHandleParams(q.i.inode, &q.i.s)
+			n := NewQueryHandleParams(q.data, q.i.inode, &q.i.s)
 			q.i.params = &n
 
 			return n, nil
@@ -167,7 +172,7 @@ func (q QueryHandle) Lookup(ctx context.Context, name string) (fs.Node, error) {
 				return *q.i.readAllAsAscii, nil
 			}
 
-			n := NewQueryHandleReadAllAsAscii(q.i.inode, &q.i.s)
+			n := NewQueryHandleReadAllAsAscii(q.data, q.i.inode, &q.i.s)
 			q.i.readAllAsAscii = &n
 
 			return n, nil
@@ -228,8 +233,9 @@ func (q QueryHandle) Remove(ctx context.Context, req *fuse.RemoveRequest) error 
 			}
 
 			var err error
-			s.rows, err = prTE(db.Query(s.query.String(), params...))
+			s.rows, err = q.data.DB.Query(s.query.String(), params...)
 			if err != nil {
+				q.data.PrintErr(err)
 				s.notifyError(err)
 				return syscall.EIO
 			}

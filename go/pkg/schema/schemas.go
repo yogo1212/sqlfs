@@ -1,4 +1,4 @@
-package main
+package schema
 
 import (
 	"context"
@@ -8,6 +8,8 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
+
+	"github.com/yogo1212/sqlfs.git/go/pkg/base"
 )
 
 type schemasInfo struct {
@@ -15,15 +17,20 @@ type schemasInfo struct {
 }
 
 type Schemas struct{
+	data *base.MountData
 	i *schemasInfo
+
+	inode uint64
 }
 
-func NewSchemas() (s Schemas, err error) {
+func NewSchemas(data *base.MountData, parentInode uint64) (s Schemas, err error) {
+	s.data = data
 	s.i = &schemasInfo{
 		schemas: make(map[string]*Schema),
 	}
+	s.inode = fs.GenerateDynamicInode(parentInode, "schemas")
 
-	rows, err := db.Query(`
+	rows, err := data.DB.Query(`
 select
 	nspname
 from pg_namespace`)
@@ -47,9 +54,9 @@ from pg_namespace`)
 }
 
 func (s Schemas) Attr(ctx context.Context, a *fuse.Attr) error {
-	a.Inode = InodeSchemas
-	a.Uid = uid
-	a.Gid = gid
+	a.Inode = s.inode
+	a.Uid = s.data.Uid
+	a.Gid = s.data.Gid
 	a.Mode = os.ModeDir | 0o555
 	return nil
 }
@@ -64,8 +71,9 @@ func (s Schemas) Lookup(ctx context.Context, name string) (fs.Node, error) {
 		return *schema, nil
 	}
 
-	n, err := prTE(NewSchema(name))
+	n, err := NewSchema(s.data, s.inode, name)
 	if err == nil {
+		s.data.PrintErr(err)
 		s.i.schemas[name] = &n
 	}
 
@@ -75,7 +83,7 @@ func (s Schemas) Lookup(ctx context.Context, name string) (fs.Node, error) {
 func (s Schemas) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	schemas := make([]fuse.Dirent, 0, len(s.i.schemas))
 	for n, _ := range s.i.schemas {
-		schemas = append(schemas, fuse.Dirent{Inode: fs.GenerateDynamicInode(InodeSchemas, n), Name: n, Type: fuse.DT_Dir})
+		schemas = append(schemas, fuse.Dirent{Inode: fs.GenerateDynamicInode(s.inode, n), Name: n, Type: fuse.DT_Dir})
 	}
 	return schemas, nil
 }

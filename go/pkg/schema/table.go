@@ -1,4 +1,4 @@
-package main
+package schema
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
+
+	"github.com/yogo1212/sqlfs.git/go/pkg/base"
 )
 
 type tableInfo struct{
@@ -15,9 +17,12 @@ type tableInfo struct{
 
 type Table struct{
 	i *tableInfo
+
+	data *base.MountData
 }
 
-func NewTable(ts Tables, name string) (t Table, err error) {
+func NewTable(data *base.MountData, ts Tables, name string) (t Table, err error) {
+	t.data = data
 	t.i = &tableInfo{
 		inode: fs.GenerateDynamicInode(ts.i.inode, name),
 	}
@@ -27,8 +32,8 @@ func NewTable(ts Tables, name string) (t Table, err error) {
 
 func (t Table) Attr(ctx context.Context, a *fuse.Attr) error {
 	a.Inode = t.i.inode
-	a.Uid = uid
-	a.Gid = gid
+	a.Uid = t.data.Uid
+	a.Gid = t.data.Gid
 	a.Mode = os.ModeDir | 0o555
 	return nil
 }
